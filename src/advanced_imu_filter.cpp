@@ -248,8 +248,6 @@ private:
         }
 
         // 更新发布频率统计
-        publish_frequency_status_.tick();
-
         if (freq_diagnostic_) {
             freq_diagnostic_->tick();
         }
@@ -608,9 +606,7 @@ private:
         std::shared_ptr<diagnostic_updater::HeaderlessTopicDiagnostic> freq_diagnostic_;
         double min_freq_;
         double max_freq_;
-
-        // Dynamic reconfigure
-        dynamic_reconfigure::Server<amr_imu_filters::ImuFilterConfig> config_server_;
+        double expected_publish_freq_;
 
         // Filter parameters
         FilterType filter_type_;
@@ -619,8 +615,6 @@ private:
         double dt_;
         bool use_mag_;
         std::string fixed_frame_;
-        double expected_publish_freq_;
-        double min_freq_, max_freq_;
 
         // EKF variables
         State state_;
