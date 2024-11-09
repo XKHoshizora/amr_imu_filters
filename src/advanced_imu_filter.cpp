@@ -18,6 +18,8 @@
 #include <dynamic_reconfigure/server.h>
 #include "amr_imu_filters/ImuFilterConfig.h"
 
+#include <memory>
+
 class ImuFilter {
 public:
     enum class FilterType {
@@ -36,12 +38,15 @@ public:
     };
 
     ImuFilter(ros::NodeHandle& nh, ros::NodeHandle& private_nh)
-        : nh_(nh),
-          private_nh_(private_nh),
-          diagnostic_updater_(nh_, private_nh_),
-          publish_frequency_status_(diagnostic_updater::FrequencyStatusParam(&min_freq_, &max_freq_, 0.1, 10)),
-          last_imu_time_(0),
-          initialized_(false) {
+        : nh_(nh)
+        , private_nh_(private_nh)
+        , diagnostic_updater_(nh_, private_nh_)
+        , min_freq_(15.0)
+        , max_freq_(25.0)
+        , expected_publish_freq_(20.0)
+        , initialized_(false)
+        , has_mag_data_(false)
+        , last_imu_time_(0) {
 
         loadParameters();
         initializeFilter();
@@ -49,19 +54,20 @@ public:
         setupDynamicReconfigure();
 
         // 发布者和订阅者设置
-        filtered_imu_pub_ = nh_.advertise<sensor_msgs::Imu>("imu/filtered", 10);   // 将被重映射为 imu_filtered/data
+        filtered_imu_pub_ = nh_.advertise<sensor_msgs::Imu>("imu/filtered", 10);
         imu_sub_ = nh_.subscribe("imu", 10, &ImuFilter::imuCallback, this);
 
         if (use_mag_) {
-            filtered_mag_pub_ = nh_.advertise<sensor_msgs::MagneticField>("mag/filtered", 10);  // 将被重映射为 imu_filtered/mag
+            filtered_mag_pub_ = nh_.advertise<sensor_msgs::MagneticField>("mag/filtered", 10);
             mag_sub_ = nh_.subscribe("magnetic", 10, &ImuFilter::magCallback, this);
         }
 
-        // 发布频率监控
-        min_freq_ = 10.0;  // 允许的最小频率（Hz）
-        max_freq_ = 100.0;  // 允许的最大频率（Hz）
-        diagnostic_updater_.add("IMU Filter Status", this,
-                              &ImuFilter::checkFilterFrequency);
+        // 设置频率诊断
+        freq_diagnostic_ = std::make_shared<diagnostic_updater::HeaderlessTopicDiagnostic>(
+            "IMU Filter", diagnostic_updater_,
+            diagnostic_updater::FrequencyStatusParam(&min_freq_, &max_freq_, 0.1, 10));
+
+        diagnostic_updater_.add("IMU Filter Status", this, &ImuFilter::checkFilterFrequency);
 
         publish_timer_ = private_nh_.createTimer(
             ros::Duration(1.0 / expected_publish_freq_),
@@ -243,10 +249,15 @@ private:
 
         // 更新发布频率统计
         publish_frequency_status_.tick();
+
+        if (freq_diagnostic_) {
+            freq_diagnostic_->tick();
+        }
     }
 
     void checkFilterFrequency(diagnostic_updater::DiagnosticStatusWrapper &stat) {
-        double freq = publish_frequency_status_.getFrequency();
+        double freq = filtered_imu_pub_.getNumSubscribers() > 0 ? expected_publish_freq_ : 0.0;
+
         if (freq < min_freq_) {
             stat.summary(diagnostic_msgs::DiagnosticStatus::WARN,
                         "Filter frequency too low");
@@ -370,7 +381,7 @@ private:
             return atan2(-Yh, Xh);
         }
 
-        void configCallback(amr_imu_filters::ImuFilterConfig &config, uint32_t level) {
+        void configCallback(amr_imu_filters::ImuFilterConfig &config, uint32_t /*level*/) {
             alpha_ = config.alpha;
             process_noise_gyro_ = config.process_noise_gyro;
             process_noise_accel_ = config.process_noise_accel;
@@ -432,7 +443,7 @@ private:
                     gyro_magnitude < MAX_ANGULAR_VEL);
         }
 
-        void publishDiagnostics(const ros::TimerEvent& event) {
+        void publishDiagnostics(const ros::TimerEvent& /*event*/) {
             diagnostic_updater_.force_update();
         }
 
@@ -583,17 +594,20 @@ private:
 
     private:
         // NodeHandles
-        ros::NodeHandle nh_, private_nh_;
+        ros::NodeHandle& nh_;
+        ros::NodeHandle& private_nh_;
 
         // Publishers and Subscribers
         ros::Publisher filtered_imu_pub_;
-        ros::Publisher filtered_mag_pub_;     // 磁力计数据发布器
+        ros::Publisher filtered_mag_pub_;
         ros::Subscriber imu_sub_, mag_sub_;
         ros::Timer publish_timer_;
 
         // Diagnostic tools
         diagnostic_updater::Updater diagnostic_updater_;
-        diagnostic_updater::FrequencyStatus publish_frequency_status_;    // 频率监控状态
+        std::shared_ptr<diagnostic_updater::HeaderlessTopicDiagnostic> freq_diagnostic_;
+        double min_freq_;
+        double max_freq_;
 
         // Dynamic reconfigure
         dynamic_reconfigure::Server<amr_imu_filters::ImuFilterConfig> config_server_;
