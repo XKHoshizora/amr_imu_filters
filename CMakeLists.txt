@@ -185,7 +185,6 @@ add_dependencies(advanced_imu_filter
 # )
 # 链接库
 target_link_libraries(advanced_imu_filter
-  ${PROJECT_NAME}
   ${catkin_LIBRARIES}
   ${EIGEN3_LIBRARIES}
 )
@@ -211,8 +210,6 @@ target_link_libraries(advanced_imu_filter
 # )
 # 安装目标
 install(TARGETS advanced_imu_filter
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
