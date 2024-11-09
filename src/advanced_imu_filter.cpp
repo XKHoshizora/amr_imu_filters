@@ -82,7 +82,7 @@ private:
         private_nh_.param<double>("alpha", alpha_, 0.96);
         private_nh_.param<double>("dt", dt_, 0.05);
         private_nh_.param<bool>("use_mag", use_mag_, false);
-        private_nh_.param<std::string>("fixed_frame", fixed_frame_, "odom");
+        private_nh_.param<std::string>("fixed_frame", fixed_frame_, "imu_link");
         private_nh_.param<double>("expected_publish_freq", expected_publish_freq_, 20.0);
 
         // EKF参数
