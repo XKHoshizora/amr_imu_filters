@@ -22,7 +22,6 @@ find_package(catkin REQUIRED COMPONENTS
   tf2_geometry_msgs
   diagnostic_updater
   dynamic_reconfigure
-  amr_ros_bridge
 )
 
 ## System dependencies are found with CMake's conventions
