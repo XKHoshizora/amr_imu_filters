@@ -608,6 +608,9 @@ private:
         double max_freq_;
         double expected_publish_freq_;
 
+        // Dynamic reconfigure
+        dynamic_reconfigure::Server<amr_imu_filters::ImuFilterConfig> config_server_;
+
         // Filter parameters
         FilterType filter_type_;
         std::string filter_type_str_;
