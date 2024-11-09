@@ -149,20 +149,12 @@ include_directories(
 # add_library(${PROJECT_NAME}
 #   src/${PROJECT_NAME}/amr_imu_filters.cpp
 # )
-# 添加库目标
-add_library(${PROJECT_NAME}
-  src/ImuFilterConfig.cpp
-)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
 # add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 # 添加依赖关系
-add_dependencies(${PROJECT_NAME}
-  ${${PROJECT_NAME}_EXPORTED_TARGETS}
-  ${catkin_EXPORTED_TARGETS}
-)
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
@@ -193,11 +185,6 @@ add_dependencies(advanced_imu_filter
 #   ${catkin_LIBRARIES}
 # )
 # 链接库
-target_link_libraries(${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-  ${EIGEN3_LIBRARIES}
-)
-
 target_link_libraries(advanced_imu_filter
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
@@ -224,7 +211,7 @@ target_link_libraries(advanced_imu_filter
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 # 安装目标
-install(TARGETS ${PROJECT_NAME} advanced_imu_filter
+install(TARGETS advanced_imu_filter
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
