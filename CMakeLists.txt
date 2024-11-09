@@ -3,8 +3,8 @@ project(amr_imu_filters)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# 指定 C++ 标准
+add_compile_options(-std=c++14)
 
 # 设置编译选项
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
@@ -12,13 +12,17 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
+
 find_package(catkin REQUIRED COMPONENTS
-  geometry_msgs
   roscpp
-  rospy
   sensor_msgs
+  geometry_msgs
   tf2
   tf2_ros
+  tf2_geometry_msgs
+  diagnostic_updater
+  dynamic_reconfigure
+  amr_ros_bridge
 )
 
 ## System dependencies are found with CMake's conventions
@@ -101,6 +105,10 @@ find_package(Eigen3 REQUIRED)
 #   cfg/DynReconf1.cfg
 #   cfg/DynReconf2.cfg
 # )
+# 生成动态重配置文件
+generate_dynamic_reconfigure_options(
+  cfg/ImuFilter.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -113,13 +121,17 @@ find_package(Eigen3 REQUIRED)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES imu_filter_core
+  LIBRARIES ${PROJECT_NAME}
   CATKIN_DEPENDS
     roscpp
     sensor_msgs
     geometry_msgs
     tf2
     tf2_ros
+    tf2_geometry_msgs
+    diagnostic_updater
+    dynamic_reconfigure
+    amr_ros_bridge
   DEPENDS EIGEN3
 )
 
@@ -132,38 +144,42 @@ catkin_package(
 include_directories(
   include
   ${catkin_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIR}
+  ${EIGEN3_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
 #   src/${PROJECT_NAME}/amr_imu_filters.cpp
 # )
-add_library(imu_filter_core
-  src/imu_filter_core.cpp
+# 添加库目标
+add_library(${PROJECT_NAME}
+  src/ImuFilterConfig.cpp
 )
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
 # add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(imu_filter_core
+# 添加依赖关系
+add_dependencies(${PROJECT_NAME}
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
+  ${PROJECT_NAME}_gencfg
+)
+
+add_dependencies(advanced_imu_filter
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  ${PROJECT_NAME}_gencfg
 )
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/amr_imu_filters_node.cpp)
-# 噪声滤波节点
-add_executable(noise_filter_node
-  src/noise_filter_node.cpp
-)
-
-# 位置补偿节点
-add_executable(position_compensator_node
-  src/position_compensator_node.cpp
+# 声明和构建可执行文件
+add_executable(advanced_imu_filter
+  src/advanced_imu_filter.cpp
 )
 
 ## Rename C++ executable without prefix
@@ -180,18 +196,16 @@ add_executable(position_compensator_node
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-target_link_libraries(imu_filter_core
+# 链接库
+target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
 )
 
-target_link_libraries(noise_filter_node
-  imu_filter_core
+target_link_libraries(advanced_imu_filter
+  ${PROJECT_NAME}
   ${catkin_LIBRARIES}
-)
-
-target_link_libraries(position_compensator_node
-  imu_filter_core
-  ${catkin_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
 )
 
 #############
@@ -213,6 +227,12 @@ target_link_libraries(position_compensator_node
 # install(TARGETS ${PROJECT_NAME}_node
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
+# 安装目标
+install(TARGETS ${PROJECT_NAME} advanced_imu_filter
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark libraries for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html
@@ -221,14 +241,6 @@ target_link_libraries(position_compensator_node
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}
 # )
-install(TARGETS
-  imu_filter_core
-  noise_filter_node
-  position_compensator_node
-  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
 
 ## Mark cpp header files for installation
 # install(DIRECTORY include/${PROJECT_NAME}/
@@ -236,10 +248,11 @@ install(TARGETS
 #   FILES_MATCHING PATTERN "*.h"
 #   PATTERN ".svn" EXCLUDE
 # )
+# 安装头文件
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
   FILES_MATCHING PATTERN "*.h"
-  PATTERN "*.hpp"
+  PATTERN ".svn" EXCLUDE
 )
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
@@ -248,8 +261,16 @@ install(DIRECTORY include/${PROJECT_NAME}/
 #   # myfile2
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 # )
+# 安装启动文件
 install(DIRECTORY launch/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  FILES_MATCHING PATTERN "*.launch"
+)
+
+# 保证配置文件可执行
+install(PROGRAMS
+  cfg/ImuFilter.cfg
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cfg
 )
 
 #############
