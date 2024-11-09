@@ -130,7 +130,6 @@ catkin_package(
     tf2_geometry_msgs
     diagnostic_updater
     dynamic_reconfigure
-    amr_ros_bridge
   DEPENDS EIGEN3
 )
 
