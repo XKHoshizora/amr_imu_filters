@@ -1,6 +1,6 @@
 <launch>
     <!-- IMU filter node -->
-    <node pkg="amr_imu_filters" type="advanced_imu_filter" name="imu_filter" output="screen">
+    <node pkg="amr_imu_filters" type="advanced_imu_filter" name="amr_imu_filter" output="screen">
         <!-- Filter parameters -->
         <param name="filter_type" value="EKF" />
         <param name="use_mag" value="false" />
