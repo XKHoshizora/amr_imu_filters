@@ -297,8 +297,22 @@ private:
                             msg->angular_velocity.z);
 
         Eigen::Vector3d accel(msg->linear_acceleration.x,
-                             msg->linear_acceleration.y,
-                             msg->linear_acceleration.z);
+                            msg->linear_acceleration.y,
+                            msg->linear_acceleration.z);
+
+        // 应用静态阈值
+        for (int i = 0; i < 3; i++) {
+            if (std::abs(gyro[i]) < STATIC_GYRO_THRESHOLD) {
+                gyro[i] = 0.0;
+            }
+        }
+
+        // 检查是否静止
+        if (isStatic(msg)) {
+            // 在静止状态下，更新陀螺仪偏差估计
+            state_.gyro_bias = state_.gyro_bias * 0.99 + gyro * 0.01;
+            return;  // 保持当前姿态
+        }
 
         // 1. 预测步骤
         // 修正陀螺仪偏差
@@ -318,8 +332,8 @@ private:
 
         if (use_mag_ && has_mag_data_) {
             Eigen::Vector3d mag(latest_mag_data_.magnetic_field.x,
-                              latest_mag_data_.magnetic_field.y,
-                              latest_mag_data_.magnetic_field.z);
+                            latest_mag_data_.magnetic_field.y,
+                            latest_mag_data_.magnetic_field.z);
             updateWithMagnetometer(mag);
         }
     }
@@ -564,6 +578,23 @@ private:
         }
 
         void initializeState(const sensor_msgs::Imu::ConstPtr& msg) {
+            static std::vector<Eigen::Vector3d> gyro_samples;
+
+            if (gyro_samples.size() < STATIC_SAMPLES) {
+                gyro_samples.push_back(Eigen::Vector3d(
+                    msg->angular_velocity.x,
+                    msg->angular_velocity.y,
+                    msg->angular_velocity.z));
+                return;
+            }
+
+            // 计算静态偏差
+            Eigen::Vector3d gyro_bias = Eigen::Vector3d::Zero();
+            for (const auto& sample : gyro_samples) {
+                gyro_bias += sample;
+            }
+            gyro_bias /= STATIC_SAMPLES;
+
             // 使用初始加速度计数据估计初始姿态
             double ax = msg->linear_acceleration.x;
             double ay = msg->linear_acceleration.y;
@@ -577,7 +608,7 @@ private:
                 tf2::Quaternion q;
                 q.setRPY(roll, pitch, yaw);
                 state_.orientation << q.w(), q.x(), q.y(), q.z();
-                state_.gyro_bias.setZero();
+                state_.gyro_bias = gyro_bias;
             } else {
                 roll_ = roll;
                 pitch_ = pitch;
@@ -587,10 +618,31 @@ private:
 
             initialized_ = true;
             last_imu_time_ = msg->header.stamp;
-            ROS_INFO("IMU Filter initialized");
+            ROS_INFO("IMU Filter initialized with gyro bias: x=%.6f, y=%.6f, z=%.6f",
+                    gyro_bias.x(), gyro_bias.y(), gyro_bias.z());
+        }
+
+        bool isStatic(const sensor_msgs::Imu::ConstPtr& msg) {
+            double gyro_magnitude = sqrt(
+                pow(msg->angular_velocity.x, 2) +
+                pow(msg->angular_velocity.y, 2) +
+                pow(msg->angular_velocity.z, 2));
+
+            double accel_magnitude = sqrt(
+                pow(msg->linear_acceleration.x, 2) +
+                pow(msg->linear_acceleration.y, 2) +
+                pow(msg->linear_acceleration.z, 2));
+
+            return gyro_magnitude < STATIC_GYRO_THRESHOLD &&
+                std::abs(accel_magnitude - 9.81) < STATIC_ACCEL_THRESHOLD;
         }
 
     private:
+        // Constants
+        static constexpr int STATIC_SAMPLES = 100;
+        static constexpr double STATIC_GYRO_THRESHOLD = 0.005;  // rad/s
+        static constexpr double STATIC_ACCEL_THRESHOLD = 0.1;   // m/s^2
+
         // NodeHandles
         ros::NodeHandle& nh_;
         ros::NodeHandle& private_nh_;
