@@ -20,8 +20,16 @@
         <param name="use_mag" value="false" />
         <param name="fixed_frame" value="odom" />
 
+        <!-- Processing parameters -->
+        <param name="subscriber_queue_size" value="50" />
+        <param name="num_threads" value="2" />
+
+        <!-- Validation thresholds -->
+        <param name="max_acceleration" value="32.0" />
+        <param name="max_angular_vel" value="14.0" />
+
         <!-- Filter rates -->
-        <param name="expected_publish_freq" value="20.0" />
+        <param name="expected_publish_freq" value="0.0" /> <!-- Disabled timer-based publishing -->
 
         <!-- Complementary filter parameters -->
         <param name="alpha" value="0.96" />
