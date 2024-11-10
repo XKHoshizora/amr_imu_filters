@@ -56,6 +56,12 @@
         <!-- Topic remapping -->
         <remap from="imu/data" to="$(arg input_topic)" if="$(arg custom_topics)"/>
         <remap from="imu/filtered" to="$(arg output_topic)" if="$(arg custom_topics)"/>
+
+        <!-- 可以考虑添加这些参数，但不是必需的，因为代码中已经有合理的默认值 -->
+        <param name="subscriber_queue_size" value="50" />
+        <param name="num_threads" value="2" />
+        <param name="max_acceleration" value="32.0" />
+        <param name="max_angular_vel" value="14.0" />
     </node>
 
     <!-- Optional: Launch rqt_reconfigure -->

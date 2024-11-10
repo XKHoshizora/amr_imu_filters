@@ -1,7 +1,7 @@
 /**
  * @file advanced_imu_filter.cpp
- * @brief Advanced IMU filter with EKF and complementary filter options
- * @details Supports dynamic reconfigure, diagnostics, and parameter tuning
+ * @brief 高级IMU滤波器，支持EKF和互补滤波
+ * @details 支持动态参数配置、诊断功能和参数调优
  */
 
 #include <ros/ros.h>
@@ -17,16 +17,18 @@
 
 class ImuFilter {
 public:
+    // 滤波器状态结构体
     struct FilterState {
-        Eigen::Vector4d orientation;  // quaternion [w,x,y,z]
-        Eigen::Vector3d gyro_bias;    // gyroscope bias
+        Eigen::Vector4d orientation;  // 四元数 [w,x,y,z]
+        Eigen::Vector3d gyro_bias;    // 陀螺仪偏差
 
         FilterState() {
-            orientation << 1, 0, 0, 0;  // unit quaternion
+            orientation << 1, 0, 0, 0;  // 初始化为单位四元数
             gyro_bias.setZero();
         }
     };
 
+    // 构造函数
     ImuFilter(ros::NodeHandle& nh, ros::NodeHandle& private_nh)
         : nh_(nh)
         , private_nh_(private_nh)
@@ -34,41 +36,35 @@ public:
         , initialized_(false)
         , has_mag_data_(false) {
 
-        // Load all parameters
-        loadParameters();
-
-        // Initialize filter state and matrices
-        initializeFilter();
-
-        // Setup ROS communication
-        setupPublishersSubscribers();
-
-        // Setup diagnostics and dynamic reconfigure
-        setupDiagnostics();
-        setupDynamicReconfigure();
+        loadParameters();       // 加载参数
+        initializeFilter();     // 初始化滤波器
+        setupPublishersSubscribers();  // 设置发布者和订阅者
+        setupDiagnostics();    // 设置诊断
+        setupDynamicReconfigure(); // 设置动态参数配置
 
         ROS_INFO("IMU Filter initialized successfully");
     }
 
 private:
+    // 参数加载函数
     void loadParameters() {
-        // Load topic names and basic parameters
+        // 加载话题名称和基本参数
         private_nh_.param<std::string>("input_topic", input_topic_, "imu/data");
         private_nh_.param<std::string>("output_topic", output_topic_, "imu/filtered");
         private_nh_.param<int>("subscriber_queue_size", subscriber_queue_size_, 50);
         private_nh_.param<int>("num_threads", num_threads_, 2);
 
-        // Load filter configuration
+        // 加载滤波器配置
         private_nh_.param<std::string>("filter_type", filter_type_, "EKF");
         private_nh_.param<bool>("use_mag", use_mag_, false);
         private_nh_.param<std::string>("fixed_frame", fixed_frame_, "odom");
         private_nh_.param<double>("expected_publish_freq", publish_freq_, 0.0);
 
-        // Load validation thresholds
+        // 加载验证阈值
         private_nh_.param<double>("max_acceleration", max_acceleration_, 32.0);
         private_nh_.param<double>("max_angular_vel", max_angular_vel_, 14.0);
 
-        // Load filter parameters
+        // 加载滤波器参数
         private_nh_.param<double>("alpha", alpha_, 0.96);
         private_nh_.param<double>("process_noise_gyro", process_noise_gyro_, 0.0001);
         private_nh_.param<double>("process_noise_accel", process_noise_accel_, 0.001);
@@ -76,23 +72,25 @@ private:
         private_nh_.param<double>("measurement_noise_accel", measurement_noise_accel_, 0.1);
         private_nh_.param<double>("measurement_noise_mag", measurement_noise_mag_, 0.01);
 
-        // Load static detection parameters
+        // 加载静态检测参数
         private_nh_.param<double>("static_threshold", static_threshold_, 0.005);
         int temp_samples;
         private_nh_.param<int>("static_samples", temp_samples, 100);
         static_samples_ = static_cast<size_t>(temp_samples);
 
-        // Load initial state parameters
+        // 加载初始状态参数
         private_nh_.param<double>("initial_roll", initial_roll_, 0.0);
         private_nh_.param<double>("initial_pitch", initial_pitch_, 0.0);
         private_nh_.param<double>("initial_yaw", initial_yaw_, 0.0);
 
+        // 加载初始陀螺仪偏差
         double bias_x, bias_y, bias_z;
         private_nh_.param<double>("initial_gyro_bias_x", bias_x, 0.0);
         private_nh_.param<double>("initial_gyro_bias_y", bias_y, 0.0);
         private_nh_.param<double>("initial_gyro_bias_z", bias_z, 0.0);
         initial_gyro_bias_ << bias_x, bias_y, bias_z;
 
+        // 输出加载的参数信息
         ROS_INFO_STREAM("Loaded parameters:\n" <<
             "Filter type: " << filter_type_ << "\n" <<
             "Use magnetometer: " << (use_mag_ ? "true" : "false") << "\n" <<
@@ -101,16 +99,18 @@ private:
             "Max angular velocity: " << max_angular_vel_);
     }
 
+    // 设置发布者和订阅者
     void setupPublishersSubscribers() {
-        // Set up subscribers with specified queue size
+        // 设置IMU数据订阅者
         imu_sub_ = nh_.subscribe(input_topic_, subscriber_queue_size_,
             &ImuFilter::imuCallback, this,
             ros::TransportHints().tcpNoDelay());
 
-        // Set up publishers
+        // 设置滤波后的IMU数据发布者
         filtered_imu_pub_ = nh_.advertise<sensor_msgs::Imu>(
             output_topic_, subscriber_queue_size_);
 
+        // 如果使用磁力计，设置相关的订阅者和发布者
         if (use_mag_) {
             mag_sub_ = nh_.subscribe("magnetic", subscriber_queue_size_,
                 &ImuFilter::magCallback, this,
@@ -120,11 +120,12 @@ private:
         }
     }
 
+    // 初始化滤波器
     void initializeFilter() {
         state_ = FilterState();
 
         if (filter_type_ == "EKF") {
-            // Initialize EKF matrices
+            // 初始化EKF矩阵
             P_ = Eigen::MatrixXd::Identity(7, 7) * 0.1;
             Q_ = Eigen::MatrixXd::Zero(7, 7);
             Q_.block<3,3>(0,0) = Eigen::Matrix3d::Identity() * process_noise_gyro_;
@@ -133,22 +134,24 @@ private:
 
             if (use_mag_) {
                 R_mag_ = Eigen::Matrix3d::Identity() * measurement_noise_mag_;
-                mag_reference_ << 1, 0, 0;
+                mag_reference_ << 1, 0, 0;  // 设置参考磁场方向
             }
         } else {
+            // 初始化互补滤波器
             q_comp_.setRPY(0, 0, 0);
         }
     }
 
+    // 设置诊断功能
     void setupDiagnostics() {
         diagnostic_updater_.setHardwareID("IMU Filter");
 
-        // Add basic diagnostics
+        // 添加基本诊断
         diagnostic_updater_.add("Filter Status", this,
             &ImuFilter::updateDiagnostics);
 
-        // Add detailed processing diagnostics
-        diagnostic_updater_.add("IMU Processing", this,
+        // 添加详细的处理诊断
+        diagnostic_updater_.add("IMU Processing",
             [this](diagnostic_updater::DiagnosticStatusWrapper &stat) {
                 stat.add("Last IMU timestamp", last_imu_time_.toSec());
                 stat.add("Current dt", dt_);
@@ -167,6 +170,14 @@ private:
             });
     }
 
+    // 设置动态参数配置
+    void setupDynamicReconfigure() {
+        dynamic_reconfigure::Server<amr_imu_filters::ImuFilterConfig>::CallbackType cb;
+        cb = boost::bind(&ImuFilter::configCallback, this, _1, _2);
+        config_server_.setCallback(cb);
+    }
+
+    // IMU数据回调函数
     void imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
         std::lock_guard<std::mutex> lock(data_mutex_);
 
@@ -176,11 +187,11 @@ private:
             }
         }
 
-        // Process timestamps
+        // 处理时间戳
         ros::Time current_time = msg->header.stamp;
         if (last_imu_time_.isZero()) {
             last_imu_time_ = current_time;
-            dt_ = 1.0 / 100.0;  // Assume 100Hz nominal rate
+            dt_ = 1.0 / 100.0;  // 假设100Hz的标称频率
             return;
         }
 
@@ -191,26 +202,28 @@ private:
         }
         last_imu_time_ = current_time;
 
-        // Validate data
+        // 验证数据
         if (!validateImuData(msg)) {
             return;
         }
 
-        // Process data based on filter type
+        // 根据滤波器类型处理数据
         if (filter_type_ == "EKF") {
             processEKF(msg);
         } else {
             processComplementary(msg);
         }
 
-        // Publish filtered data
+        // 发布滤波后的数据
         publishFilteredData();
 
-        // Update diagnostics
+        // 更新诊断信息
         diagnostic_updater_.update();
     }
 
+    // 验证IMU数据
     bool validateImuData(const sensor_msgs::Imu::ConstPtr& msg) {
+        // 计算加速度和角速度的模
         double acc_magnitude = sqrt(
             pow(msg->linear_acceleration.x, 2) +
             pow(msg->linear_acceleration.y, 2) +
@@ -221,6 +234,7 @@ private:
             pow(msg->angular_velocity.y, 2) +
             pow(msg->angular_velocity.z, 2));
 
+        // 检查是否超过阈值
         if (acc_magnitude >= max_acceleration_ || gyro_magnitude >= max_angular_vel_) {
             ROS_WARN_THROTTLE(1.0,
                 "Invalid IMU data: acc_mag=%.2f, gyro_mag=%.2f",
@@ -231,68 +245,98 @@ private:
         return true;
     }
 
-    [Rest of the implementation continues with the previously shown functions:
-    - processEKF()
-    - processComplementary()
-    - updateWithAccelerometer()
-    - updateWithMagnetometer()
-    - publishFilteredData()
-    And other utility functions...]
+    // 初始化状态
+    bool initializeState(const sensor_msgs::Imu::ConstPtr& msg) {
+        static std::vector<Eigen::Vector3d> gyro_samples;
+        static std::vector<Eigen::Vector3d> accel_samples;
 
-private:
-    // ROS handles
-    ros::NodeHandle& nh_;
-    ros::NodeHandle& private_nh_;
+        // 收集足够的样本
+        if (gyro_samples.size() < static_samples_) {
+            gyro_samples.push_back(Eigen::Vector3d(
+                msg->angular_velocity.x,
+                msg->angular_velocity.y,
+                msg->angular_velocity.z));
 
-    // Communication
-    ros::Subscriber imu_sub_;
-    ros::Subscriber mag_sub_;
-    ros::Publisher filtered_imu_pub_;
-    ros::Publisher filtered_mag_pub_;
+            accel_samples.push_back(Eigen::Vector3d(
+                msg->linear_acceleration.x,
+                msg->linear_acceleration.y,
+                msg->linear_acceleration.z));
+            return false;
+        }
 
-    // Parameters
-    // EKF helper functions
-    Eigen::Matrix4d getOmegaMatrix(const Eigen::Vector3d& w) {
-        Eigen::Matrix4d Omega;
-        Omega <<     0, -w(0), -w(1), -w(2),
-                 w(0),     0,  w(2), -w(1),
-                 w(1), -w(2),     0,  w(0),
-                 w(2),  w(1), -w(0),     0;
-        return Omega;
+        // 计算初始偏差和姿态
+        Eigen::Vector3d measured_gyro_bias = Eigen::Vector3d::Zero();
+        Eigen::Vector3d mean_accel = Eigen::Vector3d::Zero();
+
+        for (size_t i = 0; i < static_samples_; ++i) {
+            measured_gyro_bias += gyro_samples[i];
+            mean_accel += accel_samples[i];
+        }
+        measured_gyro_bias /= static_cast<double>(static_samples_);
+        mean_accel /= static_cast<double>(static_samples_);
+
+        // 计算初始姿态
+        double measured_roll = atan2(mean_accel.y(),
+            sqrt(mean_accel.x()*mean_accel.x() + mean_accel.z()*mean_accel.z()));
+        double measured_pitch = atan2(-mean_accel.x(), mean_accel.z());
+
+        // 根据滤波器类型初始化状态
+        if (filter_type_ == "EKF") {
+            state_.gyro_bias = (initial_gyro_bias_.norm() > 1e-6) ?
+                              initial_gyro_bias_ : measured_gyro_bias;
+
+            double init_roll = (std::abs(initial_roll_) > 1e-6) ?
+                             initial_roll_ : measured_roll;
+            double init_pitch = (std::abs(initial_pitch_) > 1e-6) ?
+                              initial_pitch_ : measured_pitch;
+            double init_yaw = initial_yaw_;
+
+            tf2::Quaternion q;
+            q.setRPY(init_roll, init_pitch, init_yaw);
+            state_.orientation << q.w(), q.x(), q.y(), q.z();
+        } else {
+            double init_roll = (std::abs(initial_roll_) > 1e-6) ?
+                             initial_roll_ : measured_roll;
+            double init_pitch = (std::abs(initial_pitch_) > 1e-6) ?
+                              initial_pitch_ : measured_pitch;
+            double init_yaw = initial_yaw_;
+
+            q_comp_.setRPY(init_roll, init_pitch, init_yaw);
+        }
+
+        initialized_ = true;
+        last_imu_time_ = msg->header.stamp;
+
+        ROS_INFO("Filter initialized");
+        return true;
     }
 
-    Eigen::MatrixXd getStateTransitionMatrix(const Eigen::Vector3d& w) {
-        Eigen::MatrixXd F = Eigen::MatrixXd::Identity(7, 7);
-        F.block<4,4>(0,0) = Eigen::Matrix4d::Identity() +
-                            getOmegaMatrix(w) * dt_ / 2.0;
-        return F;
-    }
-
+    // EKF处理函数
     void processEKF(const sensor_msgs::Imu::ConstPtr& msg) {
-        // Extract IMU data
+        // 提取IMU数据
         Eigen::Vector3d gyro(msg->angular_velocity.x,
                             msg->angular_velocity.y,
                             msg->angular_velocity.z);
-
         Eigen::Vector3d accel(msg->linear_acceleration.x,
                              msg->linear_acceleration.y,
                              msg->linear_acceleration.z);
 
-        // Apply gyro bias correction
+        // 应用陀螺仪偏差校正
         gyro -= state_.gyro_bias;
 
-        // 1. State Prediction
+        // 1. 状态预测
         Eigen::Matrix4d Omega = getOmegaMatrix(gyro);
         state_.orientation += (Omega * state_.orientation) * dt_ / 2.0;
         state_.orientation.normalize();
 
-        // 2. Covariance Prediction
+        // 2. 协方差预测
         Eigen::MatrixXd F = getStateTransitionMatrix(gyro);
         P_ = F * P_ * F.transpose() + Q_ * dt_;
 
-        // 3. Measurement Updates
+        // 3. 测量更新
         updateWithAccelerometer(accel);
 
+        // 如果启用磁力计且有磁力计数据，进行磁力计更新
         if (use_mag_ && has_mag_data_) {
             Eigen::Vector3d mag(latest_mag_data_.magnetic_field.x,
                               latest_mag_data_.magnetic_field.y,
@@ -301,7 +345,9 @@ private:
         }
     }
 
+    // 互补滤波处理函数
     void processComplementary(const sensor_msgs::Imu::ConstPtr& msg) {
+        // 提取IMU数据
         double gx = msg->angular_velocity.x;
         double gy = msg->angular_velocity.y;
         double gz = msg->angular_velocity.z;
@@ -310,88 +356,100 @@ private:
         double ay = msg->linear_acceleration.y;
         double az = msg->linear_acceleration.z;
 
-        // Get current Euler angles
+        // 获取当前欧拉角
         double roll, pitch, yaw;
         tf2::Matrix3x3(q_comp_).getRPY(roll, pitch, yaw);
 
-        // Calculate accelerometer-based attitude
-        double roll_acc = atan2(ay, az);
-        double pitch_acc = atan2(-ax, sqrt(ay*ay + az*az));
+        // 计算基于加速度计的姿态
+        double roll_acc = atan2(ay, sqrt(ax*ax + az*az));
+        double pitch_acc = atan2(-ax, az);
 
-        // Update angles using gyroscope data
+        // 使用陀螺仪数据更新角度
         roll += gx * dt_;
         pitch += gy * dt_;
         yaw += gz * dt_;
 
-        // Complementary filter fusion
+        // 互补滤波融合
         roll = alpha_ * roll + (1.0 - alpha_) * roll_acc;
         pitch = alpha_ * pitch + (1.0 - alpha_) * pitch_acc;
 
-        // Update quaternion
+        // 更新四元数
         q_comp_.setRPY(roll, pitch, yaw);
         q_comp_.normalize();
     }
 
+    // 使用加速度计更新EKF
     void updateWithAccelerometer(const Eigen::Vector3d& accel) {
-        // Normalize acceleration
+        // 归一化加速度
         Eigen::Vector3d accel_norm = accel.normalized();
 
-        // Predict gravity direction
+        // 预测重力方向
         Eigen::Vector3d gravity_pred = quatToRotMat(state_.orientation) *
                                      Eigen::Vector3d(0, 0, 1);
 
-        // Calculate innovation
+        // 计算创新向量
         Eigen::Vector3d innovation = accel_norm - gravity_pred;
 
-        // Get measurement Jacobian
+        // 获取测量雅可比矩阵
         Eigen::MatrixXd H = getAccelMeasurementJacobian();
 
-        // Calculate Kalman gain
+        // 计算卡尔曼增益
         Eigen::MatrixXd S = H * P_ * H.transpose() + R_accel_;
         Eigen::MatrixXd K = P_ * H.transpose() * S.inverse();
 
-        // Update state and covariance
+        // 更新状态和协方差
         Eigen::VectorXd delta_x = K * innovation;
         updateState(delta_x);
         P_ = (Eigen::MatrixXd::Identity(7, 7) - K * H) * P_;
     }
 
+    // 使用磁力计更新EKF
     void updateWithMagnetometer(const Eigen::Vector3d& mag) {
-        // Normalize magnetic field
+        // 归一化磁场
         Eigen::Vector3d mag_norm = mag.normalized();
 
-        // Predict magnetic field direction
+        // 预测磁场方向
         Eigen::Vector3d mag_pred = quatToRotMat(state_.orientation) * mag_reference_;
 
-        // Calculate innovation
+        // 计算创新向量
         Eigen::Vector3d innovation = mag_norm - mag_pred;
 
-        // Get measurement Jacobian
+        // 获取测量雅可比矩阵
         Eigen::MatrixXd H = getMagMeasurementJacobian();
 
-        // Calculate Kalman gain
+        // 计算卡尔曼增益
         Eigen::MatrixXd S = H * P_ * H.transpose() + R_mag_;
         Eigen::MatrixXd K = P_ * H.transpose() * S.inverse();
 
-        // Update state and covariance
+        // 更新状态和协方差
         Eigen::VectorXd delta_x = K * innovation;
         updateState(delta_x);
         P_ = (Eigen::MatrixXd::Identity(7, 7) - K * H) * P_;
     }
 
+    // 磁力计数据回调函数
+    void magCallback(const sensor_msgs::MagneticField::ConstPtr& msg) {
+        if (!use_mag_) return;
+
+        std::lock_guard<std::mutex> lock(data_mutex_);
+        latest_mag_data_ = *msg;
+        has_mag_data_ = true;
+    }
+
+    // 发布滤波后的数据
     void publishFilteredData() {
         sensor_msgs::Imu filtered_msg;
         filtered_msg.header.stamp = ros::Time::now();
         filtered_msg.header.frame_id = fixed_frame_;
 
-        // Set orientation data based on filter type
+        // 根据滤波器类型设置方向数据
         if (filter_type_ == "EKF") {
             filtered_msg.orientation.w = state_.orientation(0);
             filtered_msg.orientation.x = state_.orientation(1);
             filtered_msg.orientation.y = state_.orientation(2);
             filtered_msg.orientation.z = state_.orientation(3);
 
-            // Set covariance
+            // 设置协方差
             Eigen::Matrix3d orientation_cov = P_.block<3,3>(0,0);
             for (int i = 0; i < 9; i++) {
                 filtered_msg.orientation_covariance[i] = orientation_cov(i/3, i%3);
@@ -402,26 +460,17 @@ private:
             filtered_msg.orientation.y = q_comp_.y();
             filtered_msg.orientation.z = q_comp_.z();
 
-            // Set fixed covariance for complementary filter
+            // 为互补滤波器设置固定协方差
             std::fill(filtered_msg.orientation_covariance.begin(),
                      filtered_msg.orientation_covariance.end(),
                      0.01);
         }
 
-        // Copy angular velocity and linear acceleration from input
-        // You might want to add additional processing here
-
+        // 发布滤波后的数据
         filtered_imu_pub_.publish(filtered_msg);
     }
 
-    void magCallback(const sensor_msgs::MagneticField::ConstPtr& msg) {
-        if (!use_mag_) return;
-
-        std::lock_guard<std::mutex> lock(data_mutex_);
-        latest_mag_data_ = *msg;
-        has_mag_data_ = true;
-    }
-
+    // 更新诊断信息
     void updateDiagnostics(diagnostic_updater::DiagnosticStatusWrapper &stat) {
         double data_age = (ros::Time::now() - last_imu_time_).toSec();
 
@@ -434,11 +483,13 @@ private:
             stat.summary(diagnostic_msgs::DiagnosticStatus::OK, "Operating normally");
         }
 
+        // 添加基本信息
         stat.add("Filter type", filter_type_);
         stat.add("Using magnetometer", use_mag_);
         stat.add("Data age (s)", data_age);
         stat.add("dt (s)", dt_);
 
+        // 添加EKF特定信息
         if (filter_type_ == "EKF") {
             double roll, pitch, yaw;
             Eigen::Quaterniond q(state_.orientation(0), state_.orientation(1),
@@ -454,7 +505,50 @@ private:
         }
     }
 
-    // Utility functions
+    // 动态参数配置回调函数
+    void configCallback(amr_imu_filters::ImuFilterConfig &config, uint32_t /*level*/) {
+        std::lock_guard<std::mutex> lock(data_mutex_);
+
+        // 更新滤波器参数
+        alpha_ = config.alpha;
+        process_noise_gyro_ = config.process_noise_gyro;
+        process_noise_accel_ = config.process_noise_accel;
+        process_noise_bias_ = config.process_noise_bias;
+        measurement_noise_accel_ = config.measurement_noise_accel;
+        measurement_noise_mag_ = config.measurement_noise_mag;
+
+        // 更新EKF噪声矩阵
+        if (filter_type_ == "EKF") {
+            Q_.block<3,3>(0,0) = Eigen::Matrix3d::Identity() * process_noise_gyro_;
+            Q_.block<3,3>(4,4) = Eigen::Matrix3d::Identity() * process_noise_bias_;
+            R_accel_ = Eigen::Matrix3d::Identity() * measurement_noise_accel_;
+            if (use_mag_) {
+                R_mag_ = Eigen::Matrix3d::Identity() * measurement_noise_mag_;
+            }
+        }
+
+        ROS_INFO("Filter parameters updated via dynamic reconfigure");
+    }
+
+    // 辅助函数：获取Omega矩阵
+    Eigen::Matrix4d getOmegaMatrix(const Eigen::Vector3d& w) {
+        Eigen::Matrix4d Omega;
+        Omega <<     0, -w(0), -w(1), -w(2),
+                 w(0),     0,  w(2), -w(1),
+                 w(1), -w(2),     0,  w(0),
+                 w(2),  w(1), -w(0),     0;
+        return Omega;
+    }
+
+    // 辅助函数：获取状态转移矩阵
+    Eigen::MatrixXd getStateTransitionMatrix(const Eigen::Vector3d& w) {
+        Eigen::MatrixXd F = Eigen::MatrixXd::Identity(7, 7);
+        F.block<4,4>(0,0) = Eigen::Matrix4d::Identity() +
+                            getOmegaMatrix(w) * dt_ / 2.0;
+        return F;
+    }
+
+    // 辅助函数：四元数转旋转矩阵
     Eigen::Matrix3d quatToRotMat(const Eigen::Vector4d& q) {
         double q0 = q(0), q1 = q(1), q2 = q(2), q3 = q(3);
         Eigen::Matrix3d R;
@@ -466,6 +560,7 @@ private:
         return R;
     }
 
+    // 辅助函数：获取加速度计测量雅可比矩阵
     Eigen::MatrixXd getAccelMeasurementJacobian() {
         Eigen::Matrix3d R = quatToRotMat(state_.orientation);
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 7);
@@ -473,6 +568,7 @@ private:
         return H;
     }
 
+    // 辅助函数：获取磁力计测量雅可比矩阵
     Eigen::MatrixXd getMagMeasurementJacobian() {
         Eigen::Matrix3d R = quatToRotMat(state_.orientation);
         Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 7);
@@ -480,93 +576,123 @@ private:
         return H;
     }
 
+    // 辅助函数：偏斜对称矩阵
+    Eigen::Matrix3d skewSymmetric(const Eigen::Vector3d& v) {
+        Eigen::Matrix3d m;
+        m <<     0, -v(2),  v(1),
+             v(2),     0, -v(0),
+            -v(1),  v(0),     0;
+        return m;
+    }
+
+    // 辅助函数：四元数乘法
+    Eigen::Vector4d quaternionMultiply(const Eigen::Vector4d& q1,
+                                     const Eigen::Vector4d& q2) {
+        Eigen::Vector4d q;
+        q(0) = q1(0)*q2(0) - q1(1)*q2(1) - q1(2)*q2(2) - q1(3)*q2(3);
+        q(1) = q1(0)*q2(1) + q1(1)*q2(0) + q1(2)*q2(3) - q1(3)*q2(2);
+        q(2) = q1(0)*q2(2) - q1(1)*q2(3) + q1(2)*q2(0) + q1(3)*q2(1);
+        q(3) = q1(0)*q2(3) + q1(1)*q2(2) - q1(2)*q2(1) + q1(3)*q2(0);
+        return q;
+    }
+
+    // 辅助函数：更新EKF状态
     void updateState(const Eigen::VectorXd& delta_x) {
-        // Update orientation
+        // 更新方向
         Eigen::Vector3d delta_theta = delta_x.segment<3>(0);
         Eigen::Vector4d delta_q;
         delta_q << 1, delta_theta.x()/2, delta_theta.y()/2, delta_theta.z()/2;
         state_.orientation = quaternionMultiply(state_.orientation, delta_q);
         state_.orientation.normalize();
 
-        // Update gyro bias
+        // 更新陀螺仪偏差
         state_.gyro_bias += delta_x.segment<3>(4);
     }
 
 private:
-    // Node handles and parameters
+    // ROS相关成员
     ros::NodeHandle& nh_;
     ros::NodeHandle& private_nh_;
+    ros::Subscriber imu_sub_;
+    ros::Subscriber mag_sub_;
+    ros::Publisher filtered_imu_pub_;
+    ros::Publisher filtered_mag_pub_;
+
+    // 话题参数
     std::string input_topic_;
     std::string output_topic_;
     std::string fixed_frame_;
     int subscriber_queue_size_;
     int num_threads_;
 
-    // Filter parameters
-    std::string filter_type_;
-    bool use_mag_;
-    double publish_freq_;
-    double dt_;
-    double alpha_;  // Complementary filter parameter
-    double max_acceleration_;
-    double max_angular_vel_;
+    // 滤波器参数
+    std::string filter_type_;    // 滤波器类型（EKF或Complementary）
+    bool use_mag_;              // 是否使用磁力计
+    double publish_freq_;       // 发布频率
+    double dt_;                 // 时间步长
+    double alpha_;              // 互补滤波器参数
+    double max_acceleration_;   // 最大加速度阈值
+    double max_angular_vel_;    // 最大角速度阈值
 
-    // EKF parameters
-    double process_noise_gyro_;
-    double process_noise_accel_;
-    double process_noise_bias_;
-    double measurement_noise_accel_;
-    double measurement_noise_mag_;
-    double static_threshold_;
-    size_t static_samples_;
+    // EKF参数
+    double process_noise_gyro_;      // 陀螺仪过程噪声
+    double process_noise_accel_;     // 加速度计过程噪声
+    double process_noise_bias_;      // 偏差过程噪声
+    double measurement_noise_accel_; // 加速度计测量噪声
+    double measurement_noise_mag_;   // 磁力计测量噪声
+    double static_threshold_;        // 静态检测阈值
+    size_t static_samples_;          // 静态样本数量
 
-    // Initial state parameters
-    double initial_roll_;
-    double initial_pitch_;
-    double initial_yaw_;
-    Eigen::Vector3d initial_gyro_bias_;
+    // 初始状态参数
+    double initial_roll_;           // 初始横滚角
+    double initial_pitch_;          // 初始俯仰角
+    double initial_yaw_;            // 初始偏航角
+    Eigen::Vector3d initial_gyro_bias_; // 初始陀螺仪偏差
 
-    // Filter state and matrices
-    FilterState state_;
-    Eigen::MatrixXd P_;    // State covariance
-    Eigen::MatrixXd Q_;    // Process noise
-    Eigen::Matrix3d R_accel_;  // Accelerometer measurement noise
-    Eigen::Matrix3d R_mag_;    // Magnetometer measurement noise
-    Eigen::Vector3d mag_reference_;
-    tf2::Quaternion q_comp_;  // Complementary filter quaternion
+    // 滤波器状态和矩阵
+    FilterState state_;             // 滤波器状态
+    Eigen::MatrixXd P_;            // 状态协方差矩阵
+    Eigen::MatrixXd Q_;            // 过程噪声协方差矩阵
+    Eigen::Matrix3d R_accel_;      // 加速度计测量噪声协方差
+    Eigen::Matrix3d R_mag_;        // 磁力计测量噪声协方差
+    Eigen::Vector3d mag_reference_; // 参考磁场向量
+    tf2::Quaternion q_comp_;       // 互补滤波器四元数
 
-    // Runtime state
-    std::mutex data_mutex_;
-    bool initialized_;
-    bool has_mag_data_;
-    ros::Time last_imu_time_;
-    sensor_msgs::MagneticField latest_mag_data_;
+    // 运行时状态
+    std::mutex data_mutex_;          // 数据互斥锁
+    bool initialized_;               // 初始化标志
+    bool has_mag_data_;             // 磁力计数据可用标志
+    ros::Time last_imu_time_;       // 上一次IMU数据时间戳
+    sensor_msgs::MagneticField latest_mag_data_; // 最新的磁力计数据
 
-    // Diagnostics
+    // 诊断工具
     diagnostic_updater::Updater diagnostic_updater_;
     std::shared_ptr<diagnostic_updater::HeaderlessTopicDiagnostic> freq_diagnostic_;
     dynamic_reconfigure::Server<amr_imu_filters::ImuFilterConfig> config_server_;
 };
 
+// 主函数
 int main(int argc, char** argv) {
+    // 初始化ROS节点
     ros::init(argc, argv, "advanced_imu_filter");
 
     try {
+        // 创建节点句柄
         ros::NodeHandle nh;
         ros::NodeHandle private_nh("~");
 
         ROS_INFO("Starting IMU filter node...");
 
-        // Create filter instance
+        // 创建滤波器实例
         ImuFilter filter(nh, private_nh);
 
-        // Use async spinner with multiple threads
+        // 使用多线程异步处理器
         ros::AsyncSpinner spinner(2);
         spinner.start();
 
         ROS_INFO("IMU filter node is running.");
 
-        // Wait for shutdown
+        // 等待关闭
         ros::waitForShutdown();
 
         spinner.stop();
