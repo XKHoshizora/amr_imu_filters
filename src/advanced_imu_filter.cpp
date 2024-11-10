@@ -49,8 +49,8 @@ private:
     // 参数加载函数
     void loadParameters() {
         // 加载话题名称和基本参数
-        private_nh_.param<std::string>("input_topic", input_topic_, "imu/data");
-        private_nh_.param<std::string>("output_topic", output_topic_, "imu/filtered");
+        private_nh_.param<std::string>("input_topic", input_topic_, "imu");
+        private_nh_.param<std::string>("output_topic", output_topic_, "imu_filtered");
         private_nh_.param<int>("subscriber_queue_size", subscriber_queue_size_, 50);
         private_nh_.param<int>("num_threads", num_threads_, 2);
 
