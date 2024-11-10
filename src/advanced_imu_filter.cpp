@@ -76,7 +76,9 @@ private:
 
         // 静态检测参数
         private_nh_.param<double>("static_threshold", static_threshold_, 0.005);
-        private_nh_.param<int>("static_samples", static_samples_, 100);
+        int temp_samples;
+        private_nh_.param<int>("static_samples", temp_samples, 100);
+        static_samples_ = static_cast<size_t>(temp_samples);
     }
 
     void initializeFilter() {
@@ -229,8 +231,8 @@ private:
             gyro_bias += gyro_samples[i];
             mean_accel += accel_samples[i];
         }
-        gyro_bias /= static_samples_;
-        mean_accel /= static_samples_;
+        gyro_bias /= static_cast<double>(static_samples_);
+        mean_accel /= static_cast<double>(static_samples_);
 
         // 使用平均加速度计算初始姿态
         double roll = atan2(mean_accel.y(),
@@ -702,7 +704,7 @@ private:
     double measurement_noise_accel_;
     double measurement_noise_mag_;
     double static_threshold_;
-    int static_samples_;
+    size_t static_samples_{100};
 
     // 运行时状态
     std::mutex data_mutex_;
