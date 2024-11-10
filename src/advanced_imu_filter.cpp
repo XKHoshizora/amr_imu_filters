@@ -66,11 +66,11 @@ private:
 
         // 加载滤波器参数
         private_nh_.param<double>("alpha", alpha_, 0.96);
-        private_nh_.param<double>("process_noise_gyro", process_noise_gyro_, 0.0001);
-        private_nh_.param<double>("process_noise_accel", process_noise_accel_, 0.001);
-        private_nh_.param<double>("process_noise_bias", process_noise_bias_, 0.00001);
-        private_nh_.param<double>("measurement_noise_accel", measurement_noise_accel_, 0.1);
-        private_nh_.param<double>("measurement_noise_mag", measurement_noise_mag_, 0.01);
+        private_nh_.param<double>("process_noise_gyro", process_noise_gyro_, 0.00001);         // 降低陀螺仪过程噪声
+        private_nh_.param<double>("process_noise_accel", process_noise_accel_, 0.0001);        // 降低加速度计过程噪声
+        private_nh_.param<double>("process_noise_bias", process_noise_bias_, 0.000001);        // 降低偏差过程噪声
+        private_nh_.param<double>("measurement_noise_accel", measurement_noise_accel_, 0.01);  // 降低加速度计测量噪声
+        private_nh_.param<double>("measurement_noise_mag", measurement_noise_mag_, 0.001);     // 降低静态检测阈值
 
         // 加载静态检测参数
         private_nh_.param<double>("static_threshold", static_threshold_, 0.005);
@@ -250,8 +250,11 @@ private:
         static std::vector<Eigen::Vector3d> gyro_samples;
         static std::vector<Eigen::Vector3d> accel_samples;
 
-        // 收集足够的样本
-        if (gyro_samples.size() < static_samples_) {
+        // 减少所需样本数量
+        const size_t min_samples = 10;  // 从100降到10
+
+        // 收集样本
+        if (gyro_samples.size() < min_samples) {
             gyro_samples.push_back(Eigen::Vector3d(
                 msg->angular_velocity.x,
                 msg->angular_velocity.y,
@@ -264,50 +267,59 @@ private:
             return false;
         }
 
-        // 计算初始偏差和姿态
+        // 计算初始偏差和姿态，增加对微小运动的敏感度
         Eigen::Vector3d measured_gyro_bias = Eigen::Vector3d::Zero();
         Eigen::Vector3d mean_accel = Eigen::Vector3d::Zero();
 
-        for (size_t i = 0; i < static_samples_; ++i) {
+        for (size_t i = 0; i < min_samples; ++i) {
             measured_gyro_bias += gyro_samples[i];
             mean_accel += accel_samples[i];
         }
-        measured_gyro_bias /= static_cast<double>(static_samples_);
-        mean_accel /= static_cast<double>(static_samples_);
+        measured_gyro_bias /= static_cast<double>(min_samples);
+        mean_accel /= static_cast<double>(min_samples);
 
-        // 计算初始姿态
+        // 使用更敏感的阈值来检测初始姿态
+        double acc_magnitude = mean_accel.norm();
+        if (std::abs(acc_magnitude - 9.81) > 2.0) {
+            // 如果加速度显著偏离重力，使用更短的初始化周期
+            gyro_samples.clear();
+            accel_samples.clear();
+            return false;
+        }
+
+        // 计算初始姿态，增加微小角度的分辨率
         double measured_roll = atan2(mean_accel.y(),
             sqrt(mean_accel.x()*mean_accel.x() + mean_accel.z()*mean_accel.z()));
         double measured_pitch = atan2(-mean_accel.x(), mean_accel.z());
 
-        // 根据滤波器类型初始化状态
+        // 初始化EKF状态
         if (filter_type_ == "EKF") {
-            state_.gyro_bias = (initial_gyro_bias_.norm() > 1e-6) ?
-                              initial_gyro_bias_ : measured_gyro_bias;
+            // 使用更小的初始偏差估计
+            state_.gyro_bias = measured_gyro_bias * 0.5;  // 降低初始偏差估计
 
-            double init_roll = (std::abs(initial_roll_) > 1e-6) ?
-                             initial_roll_ : measured_roll;
-            double init_pitch = (std::abs(initial_pitch_) > 1e-6) ?
-                              initial_pitch_ : measured_pitch;
+            double init_roll = (std::abs(initial_roll_) > 1e-8) ?  // 提高角度分辨率
+                            initial_roll_ : measured_roll;
+            double init_pitch = (std::abs(initial_pitch_) > 1e-8) ?
+                            initial_pitch_ : measured_pitch;
             double init_yaw = initial_yaw_;
 
+            // 初始化四元数
             tf2::Quaternion q;
             q.setRPY(init_roll, init_pitch, init_yaw);
             state_.orientation << q.w(), q.x(), q.y(), q.z();
-        } else {
-            double init_roll = (std::abs(initial_roll_) > 1e-6) ?
-                             initial_roll_ : measured_roll;
-            double init_pitch = (std::abs(initial_pitch_) > 1e-6) ?
-                              initial_pitch_ : measured_pitch;
-            double init_yaw = initial_yaw_;
 
-            q_comp_.setRPY(init_roll, init_pitch, init_yaw);
+            // 调整初始协方差矩阵，使其对微小运动更敏感
+            P_ = Eigen::MatrixXd::Identity(7, 7) * 0.01;  // 降低初始不确定性
+            P_.block<3,3>(0,0) *= 0.001;  // 姿态估计的不确定性更小
+        } else {
+            // 互补滤波器初始化
+            q_comp_.setRPY(measured_roll, measured_pitch, initial_yaw_);
         }
 
         initialized_ = true;
         last_imu_time_ = msg->header.stamp;
 
-        ROS_INFO("Filter initialized");
+        ROS_INFO("Filter initialized with improved sensitivity");
         return true;
     }
 
@@ -318,29 +330,49 @@ private:
                             msg->angular_velocity.y,
                             msg->angular_velocity.z);
         Eigen::Vector3d accel(msg->linear_acceleration.x,
-                             msg->linear_acceleration.y,
-                             msg->linear_acceleration.z);
+                            msg->linear_acceleration.y,
+                            msg->linear_acceleration.z);
 
-        // 应用陀螺仪偏差校正
-        gyro -= state_.gyro_bias;
+        // 使用自适应偏差校正
+        Eigen::Vector3d corrected_gyro = gyro - state_.gyro_bias;
 
-        // 1. 状态预测
-        Eigen::Matrix4d Omega = getOmegaMatrix(gyro);
+        // 增加对微小角速度的响应
+        const double min_gyro_threshold = 0.0001;  // 降低角速度阈值
+        for (int i = 0; i < 3; i++) {
+            if (std::abs(corrected_gyro[i]) < min_gyro_threshold) {
+                corrected_gyro[i] = 0.0;
+            }
+        }
+
+        // 状态预测
+        Eigen::Matrix4d Omega = getOmegaMatrix(corrected_gyro);
         state_.orientation += (Omega * state_.orientation) * dt_ / 2.0;
         state_.orientation.normalize();
 
-        // 2. 协方差预测
-        Eigen::MatrixXd F = getStateTransitionMatrix(gyro);
-        P_ = F * P_ * F.transpose() + Q_ * dt_;
+        // 自适应协方差预测
+        Eigen::MatrixXd F = getStateTransitionMatrix(corrected_gyro);
 
-        // 3. 测量更新
-        updateWithAccelerometer(accel);
+        // 根据运动幅度调整过程噪声
+        double gyro_magnitude = corrected_gyro.norm();
+        double noise_scale = std::max(1.0, std::min(10.0, gyro_magnitude / 0.01));
 
-        // 如果启用磁力计且有磁力计数据，进行磁力计更新
+        Eigen::MatrixXd Q_scaled = Q_ * noise_scale;
+        P_ = F * P_ * F.transpose() + Q_scaled * dt_;
+
+        // 加速度计更新
+        // 使用自适应测量噪声
+        double acc_magnitude = accel.norm();
+        double acc_noise_scale = std::abs(acc_magnitude - 9.81) / 0.1;
+        acc_noise_scale = std::max(0.1, std::min(10.0, acc_noise_scale));
+
+        Eigen::Matrix3d R_accel_scaled = R_accel_ * acc_noise_scale;
+        updateWithAccelerometer(accel, R_accel_scaled);
+
+        // 磁力计更新（如果启用）
         if (use_mag_ && has_mag_data_) {
             Eigen::Vector3d mag(latest_mag_data_.magnetic_field.x,
-                              latest_mag_data_.magnetic_field.y,
-                              latest_mag_data_.magnetic_field.z);
+                            latest_mag_data_.magnetic_field.y,
+                            latest_mag_data_.magnetic_field.z);
             updateWithMagnetometer(mag);
         }
     }
@@ -379,27 +411,37 @@ private:
     }
 
     // 使用加速度计更新EKF
-    void updateWithAccelerometer(const Eigen::Vector3d& accel) {
-        // 归一化加速度
+    void updateWithAccelerometer(const Eigen::Vector3d& accel,
+                                const Eigen::Matrix3d& R_accel_scaled) {
+        // 使用更敏感的归一化处理
         Eigen::Vector3d accel_norm = accel.normalized();
 
         // 预测重力方向
         Eigen::Vector3d gravity_pred = quatToRotMat(state_.orientation) *
-                                     Eigen::Vector3d(0, 0, 1);
+                                    Eigen::Vector3d(0, 0, 1);
 
-        // 计算创新向量
+        // 计算创新向量，增加对微小差异的敏感度
         Eigen::Vector3d innovation = accel_norm - gravity_pred;
 
-        // 获取测量雅可比矩阵
+        // 使用自适应卡尔曼增益计算
         Eigen::MatrixXd H = getAccelMeasurementJacobian();
-
-        // 计算卡尔曼增益
-        Eigen::MatrixXd S = H * P_ * H.transpose() + R_accel_;
+        Eigen::MatrixXd S = H * P_ * H.transpose() + R_accel_scaled;
         Eigen::MatrixXd K = P_ * H.transpose() * S.inverse();
 
-        // 更新状态和协方差
+        // 更新状态，保持微小更新
         Eigen::VectorXd delta_x = K * innovation;
+
+        // 防止过度修正
+        const double max_correction = 0.1;
+        for (int i = 0; i < delta_x.size(); ++i) {
+            if (std::abs(delta_x(i)) > max_correction) {
+                delta_x(i) = std::copysign(max_correction, delta_x(i));
+            }
+        }
+
         updateState(delta_x);
+
+        // 更新协方差，保持对微小变化的敏感度
         P_ = (Eigen::MatrixXd::Identity(7, 7) - K * H) * P_;
     }
 

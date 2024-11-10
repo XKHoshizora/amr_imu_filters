@@ -35,11 +35,11 @@
         <param name="alpha" value="0.96" />
 
         <!-- EKF parameters -->
-        <param name="process_noise_gyro" value="0.0001" />
-        <param name="process_noise_accel" value="0.001" />
-        <param name="process_noise_bias" value="0.00001" />
-        <param name="measurement_noise_accel" value="0.1" />
-        <param name="measurement_noise_mag" value="0.01" />
+        <param name="process_noise_gyro" value="0.00001" />
+        <param name="process_noise_accel" value="0.0001" />
+        <param name="process_noise_bias" value="0.000001" />
+        <param name="measurement_noise_accel" value="0.01" />
+        <param name="measurement_noise_mag" value="0.001" />
 
         <!-- Static detection parameters -->
         <param name="static_threshold" value="0.005" />
