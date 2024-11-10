@@ -613,6 +613,9 @@ private:
     // ROS相关成员
     ros::NodeHandle& nh_;
     ros::NodeHandle& private_nh_;
+    diagnostic_updater::Updater diagnostic_updater_;
+
+    // Communication
     ros::Subscriber imu_sub_;
     ros::Subscriber mag_sub_;
     ros::Publisher filtered_imu_pub_;
@@ -626,47 +629,46 @@ private:
     int num_threads_;
 
     // 滤波器参数
-    std::string filter_type_;    // 滤波器类型（EKF或Complementary）
-    bool use_mag_;              // 是否使用磁力计
-    double publish_freq_;       // 发布频率
-    double dt_;                 // 时间步长
-    double alpha_;              // 互补滤波器参数
-    double max_acceleration_;   // 最大加速度阈值
-    double max_angular_vel_;    // 最大角速度阈值
+    std::string filter_type_;
+    bool use_mag_;
+    double publish_freq_;
+    double dt_;
+    double alpha_;
+    double max_acceleration_;
+    double max_angular_vel_;
 
     // EKF参数
-    double process_noise_gyro_;      // 陀螺仪过程噪声
-    double process_noise_accel_;     // 加速度计过程噪声
-    double process_noise_bias_;      // 偏差过程噪声
-    double measurement_noise_accel_; // 加速度计测量噪声
-    double measurement_noise_mag_;   // 磁力计测量噪声
-    double static_threshold_;        // 静态检测阈值
-    size_t static_samples_;          // 静态样本数量
+    double process_noise_gyro_;
+    double process_noise_accel_;
+    double process_noise_bias_;
+    double measurement_noise_accel_;
+    double measurement_noise_mag_;
+    double static_threshold_;
+    size_t static_samples_;
 
     // 初始状态参数
-    double initial_roll_;           // 初始横滚角
-    double initial_pitch_;          // 初始俯仰角
-    double initial_yaw_;            // 初始偏航角
-    Eigen::Vector3d initial_gyro_bias_; // 初始陀螺仪偏差
+    double initial_roll_;
+    double initial_pitch_;
+    double initial_yaw_;
+    Eigen::Vector3d initial_gyro_bias_;
 
     // 滤波器状态和矩阵
-    FilterState state_;             // 滤波器状态
-    Eigen::MatrixXd P_;            // 状态协方差矩阵
-    Eigen::MatrixXd Q_;            // 过程噪声协方差矩阵
-    Eigen::Matrix3d R_accel_;      // 加速度计测量噪声协方差
-    Eigen::Matrix3d R_mag_;        // 磁力计测量噪声协方差
-    Eigen::Vector3d mag_reference_; // 参考磁场向量
-    tf2::Quaternion q_comp_;       // 互补滤波器四元数
+    FilterState state_;
+    Eigen::MatrixXd P_;
+    Eigen::MatrixXd Q_;
+    Eigen::Matrix3d R_accel_;
+    Eigen::Matrix3d R_mag_;
+    Eigen::Vector3d mag_reference_;
+    tf2::Quaternion q_comp_;
 
     // 运行时状态
-    std::mutex data_mutex_;          // 数据互斥锁
-    bool initialized_;               // 初始化标志
-    bool has_mag_data_;             // 磁力计数据可用标志
-    ros::Time last_imu_time_;       // 上一次IMU数据时间戳
-    sensor_msgs::MagneticField latest_mag_data_; // 最新的磁力计数据
+    std::mutex data_mutex_;
+    bool initialized_;
+    bool has_mag_data_;
+    ros::Time last_imu_time_;
+    sensor_msgs::MagneticField latest_mag_data_;
 
     // 诊断工具
-    diagnostic_updater::Updater diagnostic_updater_;
     std::shared_ptr<diagnostic_updater::HeaderlessTopicDiagnostic> freq_diagnostic_;
     dynamic_reconfigure::Server<amr_imu_filters::ImuFilterConfig> config_server_;
 };
