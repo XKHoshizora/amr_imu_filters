@@ -1,7 +1,7 @@
 <launch>
     <arg name="custom_topics" default="false" doc="Whether to use custom topic names"/>
-    <arg name="input_topic" default="imu/data" doc="Custom input topic name"/>
-    <arg name="output_topic" default="imu/filtered" doc="Custom output topic name"/>
+    <arg name="input_topic" default="imu" doc="Custom input topic name"/>
+    <arg name="output_topic" default="imu_filtered" doc="Custom output topic name"/>
 
     <!-- IMU filter node -->
     <node pkg="amr_imu_filters" type="advanced_imu_filter" name="amr_imu_filter" output="screen">
@@ -30,8 +30,8 @@
         <!-- Topic configuration -->
         <!-- 默认输入输出话题为 imu/data 和 imu/filtered -->
         <!-- 如果需要自定义话题名称,使用以下remap -->
-        <remap from="imu/data" to="$(arg input_topic)" if="$(arg custom_topics)"/>
-        <remap from="imu/filtered" to="$(arg output_topic)" if="$(arg custom_topics)"/>
+        <remap from="imu" to="$(arg input_topic)" if="$(arg custom_topics)"/>
+        <remap from="imu_filtered" to="$(arg output_topic)" if="$(arg custom_topics)"/>
     </node>
 
     <!-- Optional: Launch rqt_reconfigure -->

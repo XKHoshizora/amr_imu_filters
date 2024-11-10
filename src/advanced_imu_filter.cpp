@@ -53,8 +53,8 @@ public:
 private:
     void loadParameters() {
         // 话题配置
-        private_nh_.param<std::string>("input_topic", input_topic_, "imu/data");
-        private_nh_.param<std::string>("output_topic", output_topic_, "imu/filtered");
+        private_nh_.param<std::string>("input_topic", input_topic_, "imu");
+        private_nh_.param<std::string>("output_topic", output_topic_, "imu_filtered");
 
         // 基本参数
         private_nh_.param<std::string>("filter_type", filter_type_, "EKF");
@@ -114,7 +114,7 @@ private:
 
         if (use_mag_) {
             mag_sub_ = nh_.subscribe("magnetic", 10, &ImuFilter::magCallback, this);
-            filtered_mag_pub_ = nh_.advertise<sensor_msgs::MagneticField>("mag/filtered", 10);
+            filtered_mag_pub_ = nh_.advertise<sensor_msgs::MagneticField>("mag_filtered", 10);
         }
 
         // 创建发布定时器 - 可选的基于时间的发布机制
