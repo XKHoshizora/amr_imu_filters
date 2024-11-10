@@ -79,6 +79,23 @@ private:
         int temp_samples;
         private_nh_.param<int>("static_samples", temp_samples, 100);
         static_samples_ = static_cast<size_t>(temp_samples);
+
+        // 加载初始状态参数，设置默认值为0，可通过launch文件配置
+        private_nh_.param<double>("initial_roll", initial_roll_, 0.0);
+        private_nh_.param<double>("initial_pitch", initial_pitch_, 0.0);
+        private_nh_.param<double>("initial_yaw", initial_yaw_, 0.0);
+
+        double bias_x, bias_y, bias_z;
+        private_nh_.param<double>("initial_gyro_bias_x", bias_x, 0.0);
+        private_nh_.param<double>("initial_gyro_bias_y", bias_y, 0.0);
+        private_nh_.param<double>("initial_gyro_bias_z", bias_z, 0.0);
+        initial_gyro_bias_ << bias_x, bias_y, bias_z;
+
+        ROS_INFO("Loaded initial parameters:");
+        ROS_INFO("Initial RPY (deg): %.2f, %.2f, %.2f",
+                 initial_roll_*180/M_PI, initial_pitch_*180/M_PI, initial_yaw_*180/M_PI);
+        ROS_INFO("Initial gyro bias: %.4f, %.4f, %.4f",
+                 initial_gyro_bias_.x(), initial_gyro_bias_.y(), initial_gyro_bias_.z());
     }
 
     void initializeFilter() {
@@ -223,40 +240,62 @@ private:
             return false;
         }
 
-        // 计算初始陀螺仪偏差
-        Eigen::Vector3d gyro_bias = Eigen::Vector3d::Zero();
+        // 计算实际的偏差和姿态
+        Eigen::Vector3d measured_gyro_bias = Eigen::Vector3d::Zero();
         Eigen::Vector3d mean_accel = Eigen::Vector3d::Zero();
 
         for (size_t i = 0; i < static_samples_; ++i) {
-            gyro_bias += gyro_samples[i];
+            measured_gyro_bias += gyro_samples[i];
             mean_accel += accel_samples[i];
         }
-        gyro_bias /= static_cast<double>(static_samples_);
+        measured_gyro_bias /= static_cast<double>(static_samples_);
         mean_accel /= static_cast<double>(static_samples_);
 
-        // 使用平均加速度计算初始姿态
-        double roll = atan2(mean_accel.y(),
+        // 计算测量的初始姿态
+        double measured_roll = atan2(mean_accel.y(),
             sqrt(mean_accel.x()*mean_accel.x() + mean_accel.z()*mean_accel.z()));
-        double pitch = atan2(-mean_accel.x(), mean_accel.z());
-        double yaw = 0.0;  // 初始偏航角设为0
+        double measured_pitch = atan2(-mean_accel.x(), mean_accel.z());
 
+        // 记录测量值，便于用户后续调整参数
+        ROS_INFO("Measured initialization values:");
+        ROS_INFO("Measured orientation (RPY): %.2f, %.2f, 0.00",
+                 measured_roll*180/M_PI, measured_pitch*180/M_PI);
+        ROS_INFO("Measured gyro bias: %.4f, %.4f, %.4f",
+                 measured_gyro_bias.x(), measured_gyro_bias.y(), measured_gyro_bias.z());
+
+        // 使用launch文件中配置的值或测量值
         if (filter_type_ == "EKF") {
-            state_.gyro_bias = gyro_bias;
+            // 如果用户设置了初始偏差，使用设置值；否则使用测量值
+            state_.gyro_bias = (initial_gyro_bias_.norm() > 1e-6) ?
+                              initial_gyro_bias_ : measured_gyro_bias;
+
+            // 如果用户设置了初始姿态，使用设置值；否则使用测量值
+            double init_roll = (std::abs(initial_roll_) > 1e-6) ?
+                             initial_roll_ : measured_roll;
+            double init_pitch = (std::abs(initial_pitch_) > 1e-6) ?
+                              initial_pitch_ : measured_pitch;
+            // 偏航角总是使用配置值，因为无法从加速度计测量
+            double init_yaw = initial_yaw_;
+
             tf2::Quaternion q;
-            q.setRPY(roll, pitch, yaw);
+            q.setRPY(init_roll, init_pitch, init_yaw);
             state_.orientation << q.w(), q.x(), q.y(), q.z();
         } else {
-            q_comp_.setRPY(roll, pitch, yaw);
+            // 互补滤波器的初始化逻辑类似
+            double init_roll = (std::abs(initial_roll_) > 1e-6) ?
+                             initial_roll_ : measured_roll;
+            double init_pitch = (std::abs(initial_pitch_) > 1e-6) ?
+                              initial_pitch_ : measured_pitch;
+            double init_yaw = initial_yaw_;
+
+            q_comp_.setRPY(init_roll, init_pitch, init_yaw);
         }
 
         initialized_ = true;
         last_imu_time_ = msg->header.stamp;
 
-        ROS_INFO("Filter initialized:");
-        ROS_INFO("Initial orientation (RPY): %.2f, %.2f, %.2f",
-            roll*180/M_PI, pitch*180/M_PI, yaw*180/M_PI);
-        ROS_INFO("Initial gyro bias: %.4f, %.4f, %.4f",
-            gyro_bias.x(), gyro_bias.y(), gyro_bias.z());
+        ROS_INFO("Filter initialized using %s values",
+                 (initial_gyro_bias_.norm() > 1e-6) ? "configured" : "measured");
 
         return true;
     }
@@ -656,6 +695,12 @@ private:
     }
 
 private:
+    // 初始参数
+    double initial_roll_{0.0};
+    double initial_pitch_{0.0};
+    double initial_yaw_{0.0};
+    Eigen::Vector3d initial_gyro_bias_{Eigen::Vector3d::Zero()};
+
     // ROS相关成员
     ros::NodeHandle& nh_;
     ros::NodeHandle& private_nh_;

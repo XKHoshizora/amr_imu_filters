@@ -1,7 +1,17 @@
 <launch>
+    <!-- Custom topic arguments -->
     <arg name="custom_topics" default="false" doc="Whether to use custom topic names"/>
     <arg name="input_topic" default="imu" doc="Custom input topic name"/>
     <arg name="output_topic" default="imu_filtered" doc="Custom output topic name"/>
+
+    <!-- Initial pose arguments (optional) -->
+    <arg name="set_initial_pose" default="false" doc="Whether to set initial pose"/>
+    <arg name="initial_roll" default="0.0" doc="Initial roll in radians"/>
+    <arg name="initial_pitch" default="0.0" doc="Initial pitch in radians"/>
+    <arg name="initial_yaw" default="0.0" doc="Initial yaw in radians"/>
+    <arg name="initial_gyro_bias_x" default="0.0" doc="Initial gyro bias x"/>
+    <arg name="initial_gyro_bias_y" default="0.0" doc="Initial gyro bias y"/>
+    <arg name="initial_gyro_bias_z" default="0.0" doc="Initial gyro bias z"/>
 
     <!-- IMU filter node -->
     <node pkg="amr_imu_filters" type="advanced_imu_filter" name="amr_imu_filter" output="screen">
@@ -23,15 +33,21 @@
         <param name="measurement_noise_accel" value="0.1" />
         <param name="measurement_noise_mag" value="0.01" />
 
-        <!-- 静态检测参数 -->
+        <!-- Static detection parameters -->
         <param name="static_threshold" value="0.005" />
         <param name="static_samples" value="100" />
 
-        <!-- Topic configuration -->
-        <!-- 默认输入输出话题为 imu/data 和 imu/filtered -->
-        <!-- 如果需要自定义话题名称,使用以下remap -->
-        <remap from="imu" to="$(arg input_topic)" if="$(arg custom_topics)"/>
-        <remap from="imu_filtered" to="$(arg output_topic)" if="$(arg custom_topics)"/>
+        <!-- Initial state parameters - only set if set_initial_pose is true -->
+        <param name="initial_roll" value="$(arg initial_roll)" if="$(arg set_initial_pose)"/>
+        <param name="initial_pitch" value="$(arg initial_pitch)" if="$(arg set_initial_pose)"/>
+        <param name="initial_yaw" value="$(arg initial_yaw)" if="$(arg set_initial_pose)"/>
+        <param name="initial_gyro_bias_x" value="$(arg initial_gyro_bias_x)" if="$(arg set_initial_pose)"/>
+        <param name="initial_gyro_bias_y" value="$(arg initial_gyro_bias_y)" if="$(arg set_initial_pose)"/>
+        <param name="initial_gyro_bias_z" value="$(arg initial_gyro_bias_z)" if="$(arg set_initial_pose)"/>
+
+        <!-- Topic remapping -->
+        <remap from="imu/data" to="$(arg input_topic)" if="$(arg custom_topics)"/>
+        <remap from="imu/filtered" to="$(arg output_topic)" if="$(arg custom_topics)"/>
     </node>
 
     <!-- Optional: Launch rqt_reconfigure -->
