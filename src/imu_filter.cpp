@@ -24,7 +24,7 @@ private:
     std::string imu_frame_id_;
 
     // 滑动窗口
-    int window_size_;
+    std::size_t window_size_;
     std::deque<geometry_msgs::Vector3> acc_window_;
     std::deque<geometry_msgs::Vector3> gyro_window_;
 
@@ -78,7 +78,9 @@ public:
 private:
     void loadParameters() {
         // 加载ROS参数
+        int window_size_temp;  // 创建一个临时int变量来接收参数
         private_nh_.param("window_size", window_size_, 5);
+        window_size_ = std::max(1, window_size_temp);
         private_nh_.param("init_samples", init_samples_, 100);
         private_nh_.param("acc_lpf_alpha", acc_lpf_alpha_, 0.2);
         private_nh_.param("gyro_lpf_alpha", gyro_lpf_alpha_, 0.2);
@@ -228,10 +230,10 @@ private:
         acc_window_.push_back(acc);
         gyro_window_.push_back(gyro);
 
-        while (acc_window_.size() > window_size_) {
+        while (acc_window_.size() > static_cast<std::size_t>(window_size_)) {
             acc_window_.pop_front();
         }
-        while (gyro_window_.size() > window_size_) {
+        while (gyro_window_.size() > static_cast<std::size_t>(window_size_)) {
             gyro_window_.pop_front();
         }
     }
