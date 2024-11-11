@@ -15,6 +15,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
+  std_msgs
   sensor_msgs
   geometry_msgs
   tf2
@@ -122,6 +123,7 @@ catkin_package(
   INCLUDE_DIRS include
   CATKIN_DEPENDS
     roscpp
+    std_msgs
     sensor_msgs
     geometry_msgs
     tf2
@@ -224,11 +226,9 @@ target_link_libraries(advanced_imu_filter
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 # 安装目标
-install(TARGETS imu_filter
-  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
-
-install(TARGETS advanced_imu_filter
+install(TARGETS
+  imu_filter
+  advanced_imu_filter
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

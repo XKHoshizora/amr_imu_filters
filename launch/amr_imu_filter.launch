@@ -1,9 +1,29 @@
 <launch>
-    <node name="imu_filter" pkg="amr_imu_filters" type="imu_filter" output="screen">
-        <remap from="imu" to="/imu"/>
-        <remap from="imu_filtered" to="/imu_filtered"/>
-    </node>
+    <!-- IMU Filter Node -->
+    <node pkg="amr_imu_filters" type="imu_filter" name="imu_filter" output="screen" respawn="true" respawn_delay="2.0">
+        <!-- 基本参数 -->
+        <param name="window_size" value="5"/>
+        <param name="init_samples" value="100"/>
+        <param name="acc_lpf_alpha" value="0.2"/>
+        <param name="gyro_lpf_alpha" value="0.2"/>
 
-    <!-- Optional: Launch rqt_reconfigure -->
-    <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure" output="screen" />
+        <!-- 话题设置 -->
+        <param name="input_topic" value="/imu"/>
+        <param name="output_topic" value="/imu_filtered"/>
+
+        <!-- 坐标系设置 -->
+        <param name="base_frame_id" value="base_link"/>
+        <param name="imu_frame_id" value="imu_link"/>
+
+        <!-- 物理参数 -->
+        <param name="gravity_magnitude" value="9.80665"/>
+
+        <!-- 协方差参数 -->
+        <param name="orientation_stddev" value="0.01"/>
+        <param name="angular_velocity_stddev" value="0.01"/>
+        <param name="linear_acceleration_stddev" value="0.01"/>
+
+        <!-- 重映射IMU话题 -->
+        <remap from="imu" to="imu_raw" if="$(arg remap_imu_raw)"/>
+    </node>
 </launch>
