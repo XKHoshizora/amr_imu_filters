@@ -69,7 +69,7 @@ public:
         gyro_sum_.x = gyro_sum_.y = gyro_sum_.z = 0.0;
 
         ROS_INFO("IMU Filter initialized with:");
-        ROS_INFO("Window size: %d", window_size_);
+        ROS_INFO("Window size: %zu", window_size_);
         ROS_INFO("Init samples: %d", init_samples_);
         ROS_INFO("Input topic: %s", input_topic_.c_str());
         ROS_INFO("Output topic: %s", output_topic_.c_str());
