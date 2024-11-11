@@ -79,7 +79,7 @@ private:
     void loadParameters() {
         // 加载ROS参数
         int window_size_temp;  // 创建一个临时int变量来接收参数
-        private_nh_.param("window_size", window_size_, 5);
+        private_nh_.param("window_size", window_size_temp, 5);
         window_size_ = std::max(1, window_size_temp);
         private_nh_.param("init_samples", init_samples_, 100);
         private_nh_.param("acc_lpf_alpha", acc_lpf_alpha_, 0.2);
