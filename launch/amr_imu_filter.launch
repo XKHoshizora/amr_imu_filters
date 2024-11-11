@@ -1,5 +1,5 @@
 <launch>
-    <node name="amr_imu_filter" pkg="amr_imu_filters" type="amr_imu_filter" output="screen">
+    <node name="imu_filter" pkg="amr_imu_filters" type="imu_filter" output="screen">
         <remap from="imu" to="/imu"/>
         <remap from="imu_filtered" to="/imu_filtered"/>
     </node>
