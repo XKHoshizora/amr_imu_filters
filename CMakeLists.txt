@@ -160,6 +160,10 @@ include_directories(
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/amr_imu_filters_node.cpp)
 # 声明和构建可执行文件
+add_executable(imu_filter
+  src/imu_filter.cpp
+)
+
 add_executable(advanced_imu_filter
   src/advanced_imu_filter.cpp
 )
@@ -173,6 +177,12 @@ add_executable(advanced_imu_filter
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(imu_filter
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  ${PROJECT_NAME}_gencfg
+)
+
 add_dependencies(advanced_imu_filter
   ${${PROJECT_NAME}_EXPORTED_TARGETS}
   ${catkin_EXPORTED_TARGETS}
@@ -184,6 +194,11 @@ add_dependencies(advanced_imu_filter
 #   ${catkin_LIBRARIES}
 # )
 # 链接库
+target_link_libraries(imu_filter
+  ${catkin_LIBRARIES}
+  ${EIGEN3_LIBRARIES}
+)
+
 target_link_libraries(advanced_imu_filter
   ${catkin_LIBRARIES}
   ${EIGEN3_LIBRARIES}
@@ -209,6 +224,10 @@ target_link_libraries(advanced_imu_filter
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 # 安装目标
+install(TARGETS imu_filter
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
 install(TARGETS advanced_imu_filter
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
